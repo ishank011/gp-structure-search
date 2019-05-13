@@ -100,7 +100,7 @@ def make_all_1d_figures(folder, save_folder='../figures/decomposition/', max_lev
                 os.makedirs(fig_folder)
             gpml.plot_decomposition(stripped_kernel, X, y, os.path.join(fig_folder, file), best_kernel.noise, X_mean, X_scale, y_mean, y_scale)
         else:
-            print "Cannnot find file %s" % results_file
+            print "Cannot find file %s" % results_file
             
 def make_all_1d_figures_all_depths(folder, max_depth=10, prefix=''):
     make_all_1d_figures(folder=folder)

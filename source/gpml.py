@@ -22,9 +22,9 @@ import flexiblekernel as fk
 
 def run_matlab_code(code, verbose=False, jvm=True):
     # Write to a temp script
-    (fd1, script_file) = tempfile.mkstemp(suffix='.m')
-    (fd2, stdout_file) = tempfile.mkstemp(suffix='.txt')
-    (fd3, stderr_file) = tempfile.mkstemp(suffix='.txt')
+    (fd1, script_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.m')
+    (fd2, stdout_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.txt')
+    (fd3, stderr_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.txt')
     
     f = open(script_file, 'w')
     f.write(code)
@@ -32,9 +32,9 @@ def run_matlab_code(code, verbose=False, jvm=True):
     
     jvm_string = '-nojvm'
     if jvm: jvm_string = ''
-    call = [config.MATLAB_LOCATION, '-nosplash', jvm_string, '-nodisplay']
+    call = [config.MATLAB_LOCATION]
     print call
-    
+    print script_file, stdout_file, stderr_file
     stdin = open(script_file)
     stdout = open(stdout_file, 'w')
     stderr = open(stderr_file, 'w')
@@ -75,6 +75,7 @@ def run_matlab_code(code, verbose=False, jvm=True):
 
 # Matlab code to optimise hyper-parameters on one file, given one kernel.
 OPTIMIZE_KERNEL_CODE = r"""
+warning('off','Octave:shadowed-function')
 rand('twister', %(seed)s);
 randn('state', %(seed)s);
 
@@ -93,6 +94,9 @@ hyp.mean = mean(y)
 covfunc = %(kernel_family)s
 hyp.cov = %(kernel_params)s
 
+effdims = %(eff_dimensions)s
+dimpos = %(dim_positions)s
+
 likfunc = @likGauss
 hyp.lik = %(noise)s
 
@@ -122,11 +126,12 @@ end
 hessian = 0.5 * (hessian + hessian');
 hessian = hessian + 1e-6*max(max(hessian))*eye(size(hessian));
 
-save( '%(writefile)s', 'hyp_opt', 'best_nll', 'nlls', 'hessian' );
+save( '%(writefile)s', 'hyp_opt', 'best_nll', 'nlls', 'hessian', 'effdims', 'dimpos', '-mat' );
 %% exit();
 """
 
 OPTIMIZE_KERNEL_CODE_ZERO_MEAN = r"""
+warning('off','Octave:shadowed-function')
 rand('twister', %(seed)s);
 randn('state', %(seed)s);
 
@@ -145,6 +150,9 @@ hyp.mean = [];
 covfunc = %(kernel_family)s
 hyp.cov = %(kernel_params)s
 
+effdims = %(eff_dimensions)s
+dimpos = %(dim_positions)s
+
 likfunc = @likGauss
 hyp.lik = %(noise)s
 
@@ -174,7 +182,7 @@ end
 hessian = 0.5 * (hessian + hessian');
 hessian = hessian + 1e-6*max(max(hessian))*eye(size(hessian));
 
-save( '%(writefile)s', 'hyp_opt', 'best_nll', 'nlls', 'hessian' );
+save( '%(writefile)s', 'hyp_opt', 'best_nll', 'nlls', 'hessian', 'effdims', 'dimpos', '-mat' );
 %% exit();
 """
 
@@ -196,8 +204,8 @@ def optimize_params(kernel_expression, kernel_init_params, X, y, return_all=Fals
         noise = np.log(np.var(y)/10)   # Just a heuristic.
         
     data = {'X': X, 'y': y}
-    (fd1, temp_data_file) = tempfile.mkstemp(suffix='.mat')
-    (fd2, temp_write_file) = tempfile.mkstemp(suffix='.mat')
+    (fd1, temp_data_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
+    (fd2, temp_write_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
     scipy.io.savemat(temp_data_file, data)
     
     if verbose:
@@ -232,10 +240,28 @@ def read_outputs(write_file):
     optimized_hypers = gpml_result['hyp_opt']
     nll = gpml_result['best_nll'][0, 0]
     hessian = gpml_result['hessian']
+    eff_dimensions = list(gpml_result['effdims'])
+    eff_dimensions = [list(map(int, a)) for a in eff_dimensions]
+    dim_positions = list(map(int, gpml_result['dimpos'].ravel()))
     nlls = gpml_result['nlls'].ravel()
     assert isinstance(hessian, np.ndarray)  # just to make sure
+    hypers = list(optimized_hypers['cov'][0, 0].ravel())
 
-    kernel_hypers = optimized_hypers['cov'][0, 0].ravel()
+    print hypers, eff_dimensions, dim_positions
+
+    kernel_hypers = []
+    i, j, k = 0, 0, 0
+    while i < len(hypers) + len(dim_positions):
+        if i == dim_positions[j]:
+            kernel_hypers.append(eff_dimensions[j])
+            j += 1
+        else:
+            kernel_hypers.append(hypers[k])
+            k += 1
+        i += 1
+
+    kernel_hypers = np.array(kernel_hypers)
+
     noise_hyp = optimized_hypers['lik'][0, 0].ravel()
     
     return OptimizerOutput(kernel_hypers, nll, nlls, hessian, noise_hyp)
@@ -244,6 +270,7 @@ def read_outputs(write_file):
 
 # Some Matlab code to sample from a GP prior, in a spectral way.
 GENERATE_NOISELESS_DATA_CODE = r"""
+warning('off','Octave:shadowed-function')
 %% Load the data, it should contain X
 load '%(datafile)s'
 X = double(X)
@@ -259,15 +286,15 @@ sigma = 0.5.*(sigma + sigma');
 values(values < 0) = 0;
 sample = vectors*(randn(length(values), 1).*sqrt(diag(values)));
 
-save( '%(writefile)s', 'sample' );
+save( '%(writefile)s', 'sample', '-mat' );
 exit();
 """
 
 def sample_from_gp_prior(kernel, X):
 
     data = {'X': X}
-    (fd1, temp_data_file) = tempfile.mkstemp(suffix='.mat')
-    (fd2, temp_write_file) = tempfile.mkstemp(suffix='.mat')
+    (fd1, temp_data_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
+    (fd2, temp_write_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
     scipy.io.savemat(temp_data_file, data)
     
     kernel_params = kernel.param_vector()
@@ -293,6 +320,7 @@ def sample_from_gp_prior(kernel, X):
 
 # Matlab code to evaluate a covariance function at a bunch of locations.
 EVAL_KERNEL_CODE = r"""
+warning('off','Octave:shadowed-function')
 %% Load the data, it should contain X and x0.
 load '%(datafile)s'
 X = double(X)
@@ -306,7 +334,7 @@ hypers = %(kernel_params)s
 
 sigma = feval(covfunc{:}, hypers, X, x0);
 
-save( '%(writefile)s', 'sigma' );
+save( '%(writefile)s', 'sigma', '-mat' );
 exit();
 """
 
@@ -314,8 +342,8 @@ exit();
 def plot_kernel(kernel, X):
 
     data = {'X': X, 'x0': 0.0}
-    (fd1, temp_data_file) = tempfile.mkstemp(suffix='.mat')
-    (fd2, temp_write_file) = tempfile.mkstemp(suffix='.mat')
+    (fd1, temp_data_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
+    (fd2, temp_write_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
     scipy.io.savemat(temp_data_file, data)
     
     kernel_params = kernel.param_vector()
@@ -339,6 +367,7 @@ def plot_kernel(kernel, X):
 
 # Matlab code to compute mean fit
 MEAN_FUNCTION_CODE = r"""
+warning('off','Octave:shadowed-function')
 rand('twister', %(seed)s);
 randn('state', %(seed)s);
 
@@ -377,11 +406,12 @@ component_K = feval(component_covfunc{:}, hyp.cov, X, X_test)';
 
 posterior_mean = component_K * (K \ y);
 
-save( '%(writefile)s', 'posterior_mean' );
+save( '%(writefile)s', 'posterior_mean', '-mat' );
 exit();
 """
 
 MEAN_FUNCTION_CODE_ZERO_MEAN = r"""
+warning('off','Octave:shadowed-function')
 rand('twister', %(seed)s);
 randn('state', %(seed)s);
 
@@ -420,7 +450,7 @@ component_K = feval(component_covfunc{:}, hyp.cov, X, X_test)';
 
 posterior_mean = component_K * (K \ y);
 
-save( '%(writefile)s', 'posterior_mean' );
+save( '%(writefile)s', 'posterior_mean', '-mat' );
 exit();
 """
 
@@ -440,8 +470,8 @@ def posterior_mean (kernel, component_kernel, X, y, X_test=None, noise=None, ite
         X_test = np.copy(X)
         
     data = {'X': X, 'y': y, 'X_test' : X_test}
-    (fd1, temp_data_file) = tempfile.mkstemp(suffix='.mat')
-    (fd2, temp_write_file) = tempfile.mkstemp(suffix='.mat')
+    (fd1, temp_data_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
+    (fd2, temp_write_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
     scipy.io.savemat(temp_data_file, data)
     
     parameters ={'datafile': temp_data_file,
@@ -475,6 +505,7 @@ def posterior_mean (kernel, component_kernel, X, y, X_test=None, noise=None, ite
 
 # Matlab code to make predictions on a dataset.
 PREDICT_AND_SAVE_CODE = r"""
+warning('off','Octave:shadowed-function')
 rand('twister', %(seed)s);
 randn('state', %(seed)s);
 
@@ -512,7 +543,7 @@ timestamp = now
 
 '%(writefile)s'
 
-save('%(writefile)s', 'loglik', 'predictions', 'actuals', 'model', 'timestamp');
+save('%(writefile)s', 'loglik', 'predictions', 'actuals', 'model', 'timestamp', '-mat');
 
 pwd
 %% save('/home/dkd23/Dropbox/results/r_pumadyn512_fold_3_of_10_result.txt'
@@ -523,6 +554,7 @@ a='Supposedly finished writing file'
 """
 
 PREDICT_AND_SAVE_CODE_ZERO_MEAN = r"""
+warning('off','Octave:shadowed-function')
 rand('twister', %(seed)s);
 randn('state', %(seed)s);
 
@@ -560,7 +592,7 @@ timestamp = now
 
 '%(writefile)s'
 
-save('%(writefile)s', 'loglik', 'predictions', 'actuals', 'model', 'timestamp');
+save('%(writefile)s', 'loglik', 'predictions', 'actuals', 'model', 'timestamp', '-mat');
 
 pwd
 %% save('/home/dkd23/Dropbox/results/r_pumadyn512_fold_3_of_10_result.txt'
@@ -588,6 +620,7 @@ def make_predictions(kernel_expression, kernel_init_params, data_file, write_fil
     
 # Matlab code to evaluate DISTANCE of kernels
 DISTANCE_CODE_HEADER = r"""
+warning('off','Octave:shadowed-function')
 fprintf('Load the data, it should contain inputs X')
 load '%(datafile)s'
 X = double(X)
@@ -599,11 +632,13 @@ addpath(genpath('%(gpml_path)s'));
 """
 
 DISTANCE_CODE_COV = r"""
+warning('off','Octave:shadowed-function')
 covs{%(iter)d} = %(kernel_family)s
 hyps{%(iter)d} = %(kernel_params)s
 """
 
 DISTANCE_CODE_FOOTER = r"""
+warning('off','Octave:shadowed-function')
 %% Evaluate similarities
 n_kernels = length(covs);
 sim_matrix = zeros(n_kernels);
@@ -622,10 +657,11 @@ end
 %% Make symmetric
 sim_matrix = sim_matrix + sim_matrix';
 
-save( '%(writefile)s', 'sim_matrix' );
+save( '%(writefile)s', 'sim_matrix', '-mat' );
 """
 
 DISTANCE_CODE_FOOTER_HIGH_MEM = r"""
+warning('off','Octave:shadowed-function')
 %% Precompute covariance matrices
 for i = 1:length(covs);
   cov_matrices{i} = feval(covs{i}{:}, hyps{i}, X);
@@ -645,12 +681,13 @@ end
 %% Make symmetric
 sim_matrix = sim_matrix + sim_matrix';
 
-save( '%(writefile)s', 'sim_matrix' );
+save( '%(writefile)s', 'sim_matrix', '-mat' );
 """
 
 
 # Matlab code to decompose posterior into additive parts.
 MATLAB_PLOT_DECOMP_CALLER_CODE = r"""
+warning('off','Octave:shadowed-function')
 load '%(datafile)s'  %% Load the data, it should contain X and y.
 X = double(X);
 y = double(y);
@@ -675,7 +712,7 @@ def plot_decomposition(kernel, X, y, figname, noise=None, X_mean=0, X_scale=1, y
     if y.ndim == 1: y = y[:, nax]
     if noise is None: noise = np.log(np.var(y)/10)   # Just a heuristic.
     data = {'X': X, 'y': y}
-    (fd1, temp_data_file) = tempfile.mkstemp(suffix='.mat')
+    (fd1, temp_data_file) = tempfile.mkstemp(dir=config.LOCAL_TEMP_PATH, suffix='.mat')
     scipy.io.savemat(temp_data_file, data)
     
     code = MATLAB_PLOT_DECOMP_CALLER_CODE % {'datafile': temp_data_file,
@@ -717,6 +754,7 @@ def load_mat(data_file, y_dim=1):
 
 
 COMPUTE_K_CODE_HEADER = r"""
+warning('off','Octave:shadowed-function')
 fprintf('Load the data, it should contain inputs X');
 load '%(datafile)s';
 X = double(X)
@@ -727,11 +765,13 @@ addpath(genpath('%(gpml_path)s'));
 %% Create list of covariance functions"""
 
 COMPUTE_K_CODE_COVS = r"""
+warning('off','Octave:shadowed-function')
 covs{%(iter)d} = %(kernel_family)s;
 hyps{%(iter)d} = %(kernel_params)s;
 """
 
 COMPUTE_K_CODE_FOOTER = r"""
+warning('off','Octave:shadowed-function')
 %% Random projection
 randproj = %(randproj)s;
 
@@ -746,6 +786,6 @@ for i = 1:length(covs)
   cov_matrices{i} = K;
 end
 
-save('%(writefile)s', 'cov_matrices');
+save('%(writefile)s', 'cov_matrices', '-mat');
 """
 

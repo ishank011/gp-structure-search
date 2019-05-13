@@ -78,7 +78,7 @@ class MultiDGrammar:
         if tp in ['1d', 'multi']:
             raise RuntimeError("Can't expand the '%s' type" % tp)
         elif tp == 'base':
-            return [fam.default() for fam in fk.base_kernel_families(self.base_kernels)]
+            return [fam.default(self.ndim) for fam in fk.base_kernel_families(self.base_kernels)]
         elif tp == 'mask':
             return list(fk.base_kernels(self.ndim, self.base_kernels))
         else:

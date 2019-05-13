@@ -71,6 +71,7 @@ def perform_kernel_search(X, y, D, experiment_data_file_name, results_filename, 
 
     # Initialise kernels to be all base kernels along all dimensions.
     current_kernels = list(fk.base_kernels(D, exp.base_kernels))
+    print 'Dimension: ', str(D)
     
     # Create location, scale and minimum period parameters to pass around for initialisations
     data_shape = {}
@@ -258,12 +259,12 @@ def run_experiment_file(filename):
             print 'Output to: %s' % output_file
             data_file = os.path.join(r, file + ".mat")
 
-            perform_experiment(data_file, output_file, exp )
+            perform_experiment(data_file, output_file, exp)
             print "Finished file %s" % file
         else:
             print 'Skipping file %s' % file
 
-    os.system('reset')  # Stop terminal from going invisible.   
+    #os.system('reset')  # Stop terminal from going invisible.   
 
 def generate_model_fits(filename):
     """
@@ -314,7 +315,7 @@ def perform_experiment(data_file, output_file, exp):
                                           max_jobs=exp.max_jobs, verbose=exp.verbose, zero_mean=exp.zero_mean, random_seed=exp.random_seed)
         scipy.io.savemat(prediction_file, predictions, appendmat=False)
         
-    os.system('reset')  # Stop terminal from going invisible.
+    #os.system('reset')  # Stop terminal from going invisible.
     
 def calculate_model_fits(data_file, output_file, exp):
          

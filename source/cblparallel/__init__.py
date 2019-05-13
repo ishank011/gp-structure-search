@@ -522,11 +522,15 @@ quit()
                             else:
                                 matlab_path = LOCAL_MATLAB
                             if single_thread:
-                                f.write('cd ' + os.path.split(script_files[i])[0] + ';\n' + matlab_path + ' -nosplash -nojvm -nodisplay -singleCompThread -r ' + \
-                                        os.path.split(script_files[i])[-1].split('.')[0] + '\n')
+                                # print 'cd ' + os.path.split(script_files[i])[0] + ';\n' + matlab_path + ' ' + \
+                                #         os.path.split(script_files[i])[-1].split('.')[0] + '.m \n'
+                                f.write('cd ' + os.path.split(script_files[i])[0] + ';\n' + matlab_path + ' ' + \
+                                        os.path.split(script_files[i])[-1].split('.')[0] + '.m \n')
                             else:
-                                f.write('cd ' + os.path.split(script_files[i])[0] + ';\n' + matlab_path + ' -nosplash -nojvm -nodisplay -r ' + \
-                                        os.path.split(script_files[i])[-1].split('.')[0] + '\n')
+                                # print 'cd ' + os.path.split(script_files[i])[0] + ';\n' + matlab_path + ' ' + \
+                                #         os.path.split(script_files[i])[-1].split('.')[0] + '.m \n'
+                                f.write('cd ' + os.path.split(script_files[i])[0] + ';\n' + matlab_path + ' ' + \
+                                        os.path.split(script_files[i])[-1].split('.')[0] + '.m \n')
                     # Start running the job
                     if verbose:
                         print 'Submitting job %d of %d' % (i + 1, len(scripts))

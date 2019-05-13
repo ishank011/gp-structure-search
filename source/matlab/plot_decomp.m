@@ -2,6 +2,8 @@ function plot_decomp(X, y, complete_covfunc, complete_hypers, decomp_list, ...
                      decomp_hypers, log_noise, figname, latex_names, ...
                      full_name, X_mean, X_scale, y_mean, y_scale)
 
+warning('off','Octave:shadowed-function')
+
 % TODO: Assert that the sum of all kernels is the same as the complete kernel.
 
 % Convert to double in case python saved as integers
@@ -42,7 +44,7 @@ full_name = strrep(full_name, '\right', '');
 %if full_name(1) == '('; full_name(1) = ''; end
 %if full_name(end) == ')'; full_name(end) = ''; end
 title(full_name);
-filename = sprintf('%s_all.fig', figname);
+filename = sprintf('%s_all.png', figname);
 saveas( gcf, filename );
 %filename = sprintf('%s_all.pdf', figname);
 %save2pdf( filename, gcf, 400, true )
@@ -54,7 +56,7 @@ complete_var = diag(complete_sigmastarstart - complete_sigmastar' / complete_sig
 figure(100); clf; hold on;
 mean_var_plot(X*X_scale+X_mean, y*y_scale+y_mean, xrange*X_scale+X_mean, complete_mean*y_scale+y_mean, 2.*sqrt(complete_var)*y_scale, true);
 title(full_name);
-filename = sprintf('%s_all_small.fig', figname);
+filename = sprintf('%s_all_small.png', figname);
 saveas( gcf, filename );
 %filename = sprintf('%s_all.pdf', figname);
 %save2pdf( filename, gcf, 400, true )
@@ -66,7 +68,7 @@ mean_var_plot(X*X_scale+X_mean, (y-data_complete_mean)*y_scale, ...
               xrange*X_scale+X_mean, zeros(size(xrange)), ...
               2.*sqrt(noise_var).*ones(size(xrange)).*y_scale);
 title('Residuals');
-filename = sprintf('%s_resid.fig', figname);
+filename = sprintf('%s_resid.png', figname);
 saveas( gcf, filename );
 
 for i = 1:numel(decomp_list)
@@ -94,7 +96,7 @@ for i = 1:numel(decomp_list)
     latex_names{i} = strrep(latex_names{i}, '\right', '');
     title(latex_names{i});
     fprintf([latex_names{i}, '\n']);
-    filename = sprintf('%s_%d.fig', figname, i);
+    filename = sprintf('%s_%d.png', figname, i);
     saveas( gcf, filename );
     %filename = sprintf('%s_%d.pdf', figname, i);
     %save2pdf( filename, gcf, 400, true );

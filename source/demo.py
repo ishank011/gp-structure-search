@@ -15,5 +15,5 @@ experiment.run_experiment_file('../examples/fast_example.py')
 
 # To see the outcome of this experiment, look in examples/01-airline_result.txt
 
-postprocessing.make_all_1d_figures(folder='../examples/', save_folder='../examples/', rescale=False)
+postprocessing.make_all_1d_figures(folder='../examples/', save_folder='../results/', rescale=False)
     

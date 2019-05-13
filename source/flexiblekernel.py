@@ -74,7 +74,7 @@ class BaseKernelFamily(KernelFamily):
 class BaseKernel(Kernel):
     def effective_params(self):
         '''This is true of all base kernels, hence definition here'''  
-        return len(self.param_vector())
+        return len(self.param_vector()) - 1
         
     def default_params_replaced(self, sd=1, data_shape=None):
         '''Returns the parameter vector with any default values replaced with random Gaussian'''
@@ -86,17 +86,17 @@ class BaseKernel(Kernel):
 
 class SqExpKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, output_variance = params
-        return SqExpKernel(lengthscale=lengthscale, output_variance=output_variance)
+        lengthscale, output_variance, eff_dimensions = params
+        return SqExpKernel(lengthscale=lengthscale, output_variance=output_variance, eff_dimensions=eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('SqExp', self.depth())
     
-    def default(self):
-        return SqExpKernel(0., 0.)
+    def default(self, eff_dimensions):
+        return SqExpKernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -119,9 +119,10 @@ class SqExpKernelFamily(BaseKernelFamily):
         return "lengthscale"    
 
 class SqExpKernel(BaseKernel):
-    def __init__(self, lengthscale, output_variance):
+    def __init__(self, lengthscale, output_variance, eff_dimensions):
         self.lengthscale = lengthscale
         self.output_variance = output_variance
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return SqExpKernelFamily()
@@ -137,7 +138,7 @@ class SqExpKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.output_variance])
+        return np.array([self.lengthscale, self.output_variance, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -156,13 +157,15 @@ class SqExpKernel(BaseKernel):
         return result
 
     def copy(self):
-        return SqExpKernel(self.lengthscale, self.output_variance)
+        return SqExpKernel(self.lengthscale, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'SqExpKernel(lengthscale=%f, output_variance=%f)' % (self.lengthscale, self.output_variance)
+        return 'SqExpKernel(lengthscale=%f, output_variance=%f, eff_dimensions=%s)' % (self.lengthscale,
+            self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('SE(ell=%1.1f, sf=%1.1f)' % (self.lengthscale, self.output_variance), self.depth())
+        return colored('SE(ell=%1.1f, sf=%1.1f, dim=%s)' % (self.lengthscale, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
     
     def latex_print(self):
         #return 'SE(\\ell=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.output_variance)    
@@ -186,18 +189,18 @@ class SqExpKernel(BaseKernel):
 
 class SqExpPeriodicKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, period, output_variance = params
-        return SqExpPeriodicKernel(lengthscale, period, output_variance)
+        lengthscale, period, output_variance, eff_dimensions = params
+        return SqExpPeriodicKernel(lengthscale, period, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 3
+        return 4
     
     def pretty_print(self):
         return colored('PE', self.depth())
     
     # FIXME - Caution - magic numbers!
-    def default(self):
-        return SqExpPeriodicKernel(0., -2.0, 0.)
+    def default(self, eff_dimensions):
+        return SqExpPeriodicKernel(0., -2.0, 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -220,10 +223,11 @@ class SqExpPeriodicKernelFamily(BaseKernelFamily):
         return "lengthscale, period"  
     
 class SqExpPeriodicKernel(BaseKernel):
-    def __init__(self, lengthscale, period, output_variance):
+    def __init__(self, lengthscale, period, output_variance, eff_dimensions):
         self.lengthscale = lengthscale
         self.period = period
         self.output_variance = output_variance
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return SqExpPeriodicKernelFamily()
@@ -239,7 +243,7 @@ class SqExpPeriodicKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.period, self.output_variance])
+        return np.array([self.lengthscale, self.period, self.output_variance, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         '''Overwrites base method, using min period to prevent Nyquist errors'''
@@ -280,15 +284,15 @@ class SqExpPeriodicKernel(BaseKernel):
         return result
 
     def copy(self):
-        return SqExpPeriodicKernel(self.lengthscale, self.period, self.output_variance)
+        return SqExpPeriodicKernel(self.lengthscale, self.period, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'SqExpPeriodicKernel(lengthscale=%f, period=%f, output_variance=%f)' % \
-            (self.lengthscale, self.period, self.output_variance)
+        return 'SqExpPeriodicKernel(lengthscale=%f, period=%f, output_variance=%f, eff_dimensions=%s)' % \
+            (self.lengthscale, self.period, self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('PE(ell=%1.1f, p=%1.1f, sf=%1.1f)' % (self.lengthscale, self.period, self.output_variance),
-                       self.depth())
+        return colored('PE(ell=%1.1f, p=%1.1f, sf=%1.1f, dim=%s)' % (self.lengthscale, self.period, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
         
     def latex_print(self):
         # return 'PE(\\ell=%1.1f, p=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.period, self.output_variance)
@@ -316,17 +320,17 @@ class SqExpPeriodicKernel(BaseKernel):
 
 class RQKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, output_variance, alpha = params
-        return RQKernel(lengthscale, output_variance, alpha)
+        lengthscale, output_variance, alpha, eff_dimensions = params
+        return RQKernel(lengthscale, output_variance, alpha, eff_dimensions)
     
     def num_params(self):
-        return 3
+        return 4
     
     def pretty_print(self):
         return colored('RQ', self.depth())
     
-    def default(self):
-        return RQKernel(0., 0., 0.)
+    def default(self, eff_dimensions):
+        return RQKernel(0., 0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -350,10 +354,11 @@ class RQKernelFamily(BaseKernelFamily):
         
     
 class RQKernel(BaseKernel):
-    def __init__(self, lengthscale, output_variance, alpha):
+    def __init__(self, lengthscale, output_variance, alpha, eff_dimensions):
         self.lengthscale = lengthscale
         self.output_variance = output_variance
         self.alpha = alpha
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return RQKernelFamily()
@@ -369,7 +374,7 @@ class RQKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.output_variance, self.alpha])
+        return np.array([self.lengthscale, self.output_variance, self.alpha, self.eff_dimensions, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -391,15 +396,15 @@ class RQKernel(BaseKernel):
         return result
 
     def copy(self):
-        return RQKernel(self.lengthscale, self.output_variance, self.alpha)
+        return RQKernel(self.lengthscale, self.output_variance, self.alpha, self.eff_dimensions, self.eff_dimensions)
     
     def __repr__(self):
-        return 'RQKernel(lengthscale=%f, output_variance=%f, alpha=%f)' % \
-            (self.lengthscale, self.output_variance, self.alpha)
+        return 'RQKernel(lengthscale=%f, output_variance=%f, alpha=%f, eff_dimensions=%s)' % \
+            (self.lengthscale, self.output_variance, self.alpha, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('RQ(ell=%1.1f, sf=%1.1f, a=%1.1f)' % (self.lengthscale, self.output_variance, self.alpha),
-                       self.depth())
+        return colored('RQ(ell=%1.1f, sf=%1.1f, a=%1.1f, dim=%s)' % (self.lengthscale, self.output_variance, self.alpha,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
         
     def latex_print(self):
         #return 'RQ(\\ell=%1.1f, \\alpha=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.alpha, self.output_variance)
@@ -427,17 +432,17 @@ class RQKernel(BaseKernel):
 class ConstKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
         #### Note - expects list input
-        output_variance, = params
-        return ConstKernel(output_variance)
+        output_variance, eff_dimensions = params
+        return ConstKernel(output_variance, eff_dimensions)
     
     def num_params(self):
-        return 1
+        return 2
     
     def pretty_print(self):
         return colored('CS', self.depth())
     
-    def default(self):
-        return ConstKernel(0.)
+    def default(self, eff_dimensions):
+        return ConstKernel(0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -460,8 +465,9 @@ class ConstKernelFamily(BaseKernelFamily):
         return "Output variance"        
     
 class ConstKernel(BaseKernel):
-    def __init__(self, output_variance):
+    def __init__(self, output_variance, eff_dimensions):
         self.output_variance = output_variance
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return ConstKernelFamily()
@@ -477,10 +483,10 @@ class ConstKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.output_variance])
+        return np.array([self.output_variance, self.eff_dimensions])
 
     def copy(self):
-        return ConstKernel(self.output_variance)
+        return ConstKernel(self.output_variance, self.eff_dimensions)
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -490,11 +496,11 @@ class ConstKernel(BaseKernel):
         return result
     
     def __repr__(self):
-        return 'ConstKernel(output_variance=%f)' % \
-            (self.output_variance)
+        return 'ConstKernel(output_variance=%f, eff_dimensions=%s)' % \
+            (self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('CS(sf=%1.1f)' % (self.output_variance),
+        return colored('CS(sf=%1.1f, dim=%s)' % (self.output_variance, ','.join([str(x) for x in self.eff_dimensions])),
                        self.depth())
         
     def latex_print(self):
@@ -520,17 +526,17 @@ class ConstKernel(BaseKernel):
 
 class LinKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        offset, lengthscale, location = params
-        return LinKernel(offset=offset, lengthscale=lengthscale, location=location)
+        offset, lengthscale, location, eff_dimensions = params
+        return LinKernel(offset=offset, lengthscale=lengthscale, location=location, eff_dimensions=eff_dimensions)
     
     def num_params(self):
-        return 3
+        return 4
     
     def pretty_print(self):
         return colored('LN', self.depth())
     
-    def default(self):
-        return LinKernel(-2.0, 0., 0.)
+    def default(self, eff_dimensions):
+        return LinKernel(-2.0, 0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -555,11 +561,12 @@ class LinKernelFamily(BaseKernelFamily):
 class LinKernel(BaseKernel):
     # FIXME - Caution - magic numbers! This one means offset of essentially zero and scale of 1
     # FIXME - lengthscale is actually an inverse scale
-    def __init__(self, offset=-2, lengthscale=0, location=0):
+    def __init__(self, offset, lengthscale, location, eff_dimensions):
         self.offset = offset
         self.lengthscale = lengthscale
         self.location = location
-        
+        self.eff_dimensions = eff_dimensions
+
     def family(self):
         return LinKernelFamily()
         
@@ -574,7 +581,7 @@ class LinKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.offset, self.lengthscale, self.location])
+        return np.array([self.offset, self.lengthscale, self.location, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -597,15 +604,15 @@ class LinKernel(BaseKernel):
         return 2
 
     def copy(self):
-        return LinKernel(offset=self.offset, lengthscale=self.lengthscale, location=self.location)
+        return LinKernel(offset=self.offset, lengthscale=self.lengthscale, location=self.location, eff_dimensions=self.eff_dimensions)
     
     def __repr__(self):
-        return 'LinKernel(offset=%f, lengthscale=%f, location=%f)' % \
-            (self.offset, self.lengthscale, self.location)
+        return 'LinKernel(offset=%f, lengthscale=%f, location=%f, eff_dimensions=%s)' % \
+            (self.offset, self.lengthscale, self.location, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('LN(off=%1.1f, ell=%1.1f, loc=%1.1f)' % (self.offset, self.lengthscale, self.location),
-                       self.depth())
+        return colored('LN(off=%1.1f, ell=%1.1f, loc=%1.1f, dim=%s)' % (self.offset, self.lengthscale, self.location,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
         
     def latex_print(self):
         return 'Lin'           
@@ -627,17 +634,17 @@ class LinKernel(BaseKernel):
 
 class QuadraticKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        offset, output_variance = params
-        return QuadraticKernel(offset, output_variance)
+        offset, output_variance, eff_dimensions = params
+        return QuadraticKernel(offset, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('QD', self.depth())
     
-    def default(self):
-        return QuadraticKernel(0., 0.)
+    def default(self, eff_dimensions):
+        return QuadraticKernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -660,11 +667,12 @@ class QuadraticKernelFamily(BaseKernelFamily):
         return "offset"     
     
 class QuadraticKernel(BaseKernel):
-    def __init__(self, offset, output_variance):
+    def __init__(self, offset, output_variance, eff_dimensions):
         #### FIXME - Should the offset defauly to something small? Or will we never use this kernel
         #### If using this kernel we should also add the default params replaced function
         self.offset = offset
         self.output_variance = output_variance
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return QuadraticKernelFamily()
@@ -680,18 +688,18 @@ class QuadraticKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.offset, self.output_variance])
+        return np.array([self.offset, self.output_variance, self.eff_dimensions])
 
     def copy(self):
-        return QuadraticKernel(self.offset, self.output_variance)
+        return QuadraticKernel(self.offset, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'QuadraticKernel(offset=%f, output_variance=%f)' % \
-            (self.offset, self.output_variance)
+        return 'QuadraticKernel(offset=%f, output_variance=%f, eff_dimensions=%s)' % \
+            (self.offset, self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('QD(off=%1.1f, sf=%1.1f)' % (self.offset, self.output_variance),
-                       self.depth())
+        return colored('QD(off=%1.1f, sf=%1.1f, dim=%s)' % (self.offset, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
         
     def latex_print(self):
         return 'QD'           
@@ -713,17 +721,17 @@ class QuadraticKernel(BaseKernel):
 
 class CubicKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        offset, output_variance = params
-        return CubicKernel(offset, output_variance)
+        offset, output_variance, eff_dimensions = params
+        return CubicKernel(offset, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('CB', self.depth())
     
-    def default(self):
-        return CubicKernel(0., 0.)
+    def default(self, eff_dimensions):
+        return CubicKernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -746,11 +754,12 @@ class CubicKernelFamily(BaseKernelFamily):
         return "offset"     
     
 class CubicKernel(BaseKernel):
-    def __init__(self, offset, output_variance):
+    def __init__(self, offset, output_variance, eff_dimensions):
         #### FIXME - Should the offset defauly to something small? Or will we never use this kernel
         #### If using this kernel we should also add the default params replaced function
         self.offset = offset
         self.output_variance = output_variance
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return CubicKernelFamily()
@@ -766,18 +775,18 @@ class CubicKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.offset, self.output_variance])
+        return np.array([self.offset, self.output_variance, self.eff_dimensions])
 
     def copy(self):
-        return CubicKernel(self.offset, self.output_variance)
+        return CubicKernel(self.offset, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'CubicKernel(offset=%f, output_variance=%f)' % \
-            (self.offset, self.output_variance)
+        return 'CubicKernel(offset=%f, output_variance=%f, eff_dimensions=%s)' % \
+            (self.offset, self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('CB(off=%1.1f, sf=%1.1f)' % (self.offset, self.output_variance),
-                       self.depth())
+        return colored('CB(off=%1.1f, sf=%1.1f, dim=%s)' % (self.offset, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
         
     def latex_print(self):
         return 'CB'           
@@ -799,17 +808,17 @@ class CubicKernel(BaseKernel):
 
 class PP0KernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, output_variance = params
-        return PP0Kernel(lengthscale, output_variance)
+        lengthscale, output_variance, eff_dimensions = params
+        return PP0Kernel(lengthscale, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('P0', self.depth())
     
-    def default(self):
-        return PP0Kernel(0., 0.)
+    def default(self, eff_dimensions):
+        return PP0Kernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -833,9 +842,10 @@ class PP0KernelFamily(BaseKernelFamily):
     
 
 class PP0Kernel(BaseKernel):
-    def __init__(self, lengthscale, output_variance):
+    def __init__(self, lengthscale, output_variance, eff_dimensions):
         self.output_variance = output_variance
         self.lengthscale = lengthscale
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return PP0KernelFamily()
@@ -851,7 +861,7 @@ class PP0Kernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.output_variance])
+        return np.array([self.lengthscale, self.output_variance, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -870,13 +880,15 @@ class PP0Kernel(BaseKernel):
         return result
 
     def copy(self):
-        return PP0Kernel(self.lengthscale, self.output_variance)
+        return PP0Kernel(self.lengthscale, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'PP0Kernel(lengthscale=%f, output_variance=%f)' % (self.lengthscale, self.output_variance)
+        return 'PP0Kernel(lengthscale=%f, output_variance=%f, eff_dimensions=%s)' % (self.lengthscale,
+            self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('P0(ell=%1.1f, sf=%1.1f)' % (self.lengthscale, self.output_variance), self.depth())
+        return colored('P0(ell=%1.1f, sf=%1.1f, dim=%s)' % (self.lengthscale, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
     
     def latex_print(self):
         #return 'SE(\\ell=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.output_variance)    
@@ -903,17 +915,17 @@ class PP0Kernel(BaseKernel):
 
 class PP1KernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, output_variance = params
-        return PP1Kernel(lengthscale, output_variance)
+        lengthscale, output_variance, eff_dimensions = params
+        return PP1Kernel(lengthscale, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('P1', self.depth())
     
-    def default(self):
-        return PP1Kernel(0., 0.)
+    def default(self, eff_dimensions):
+        return PP1Kernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -936,9 +948,10 @@ class PP1KernelFamily(BaseKernelFamily):
         return "lengthscale"      
 
 class PP1Kernel(BaseKernel):
-    def __init__(self, lengthscale, output_variance):
+    def __init__(self, lengthscale, output_variance, eff_dimensions):
         self.output_variance = output_variance
         self.lengthscale = lengthscale
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return PP1KernelFamily()
@@ -954,7 +967,7 @@ class PP1Kernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.output_variance])
+        return np.array([self.lengthscale, self.output_variance, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -973,13 +986,15 @@ class PP1Kernel(BaseKernel):
         return result
 
     def copy(self):
-        return PP1Kernel(self.lengthscale, self.output_variance)
+        return PP1Kernel(self.lengthscale, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'PP1Kernel(lengthscale=%f, output_variance=%f)' % (self.lengthscale, self.output_variance)
+        return 'PP1Kernel(lengthscale=%f, output_variance=%f, eff_dimensions=%s)' % (self.lengthscale,
+            self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('P1(ell=%1.1f, sf=%1.1f)' % (self.lengthscale, self.output_variance), self.depth())
+        return colored('P1(ell=%1.1f, sf=%1.1f, dim=%s)' % (self.lengthscale, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
     
     def latex_print(self):
         #return 'SE(\\ell=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.output_variance)    
@@ -1006,17 +1021,17 @@ class PP1Kernel(BaseKernel):
 
 class PP2KernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, output_variance = params
-        return PP2Kernel(lengthscale, output_variance)
+        lengthscale, output_variance, eff_dimensions = params
+        return PP2Kernel(lengthscale, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('P2', self.depth())
     
-    def default(self):
-        return PP2Kernel(0., 0.)
+    def default(self, eff_dimensions):
+        return PP2Kernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -1039,9 +1054,10 @@ class PP2KernelFamily(BaseKernelFamily):
         return "lengthscale"      
 
 class PP2Kernel(BaseKernel):
-    def __init__(self, lengthscale, output_variance):
+    def __init__(self, lengthscale, output_variance, eff_dimensions):
         self.output_variance = output_variance
         self.lengthscale = lengthscale
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return PP2KernelFamily()
@@ -1057,7 +1073,7 @@ class PP2Kernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.output_variance])
+        return np.array([self.lengthscale, self.output_variance, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -1076,13 +1092,15 @@ class PP2Kernel(BaseKernel):
         return result
 
     def copy(self):
-        return PP2Kernel(self.lengthscale, self.output_variance)
+        return PP2Kernel(self.lengthscale, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'PP2Kernel(lengthscale=%f, output_variance=%f)' % (self.lengthscale, self.output_variance)
+        return 'PP2Kernel(lengthscale=%f, output_variance=%f, eff_dimensions=%s)' % (self.lengthscale,
+            self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('P2(ell=%1.1f, sf=%1.1f)' % (self.lengthscale, self.output_variance), self.depth())
+        return colored('P2(ell=%1.1f, sf=%1.1f, dim=%s)' % (self.lengthscale, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
     
     def latex_print(self):
         #return 'SE(\\ell=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.output_variance)    
@@ -1109,17 +1127,17 @@ class PP2Kernel(BaseKernel):
 
 class PP3KernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, output_variance = params
-        return PP3Kernel(lengthscale, output_variance)
+        lengthscale, output_variance, eff_dimensions = params
+        return PP3Kernel(lengthscale, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('P3', self.depth())
     
-    def default(self):
-        return PP3Kernel(0., 0.)
+    def default(self, eff_dimensions):
+        return PP3Kernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -1142,9 +1160,10 @@ class PP3KernelFamily(BaseKernelFamily):
         return "lengthscale"       
 
 class PP3Kernel(BaseKernel):
-    def __init__(self, lengthscale, output_variance):
+    def __init__(self, lengthscale, output_variance, eff_dimensions):
         self.output_variance = output_variance
         self.lengthscale = lengthscale
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return PP3KernelFamily()
@@ -1160,7 +1179,7 @@ class PP3Kernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.output_variance])
+        return np.array([self.lengthscale, self.output_variance, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -1179,13 +1198,15 @@ class PP3Kernel(BaseKernel):
         return result
 
     def copy(self):
-        return PP3Kernel(self.lengthscale, self.output_variance)
+        return PP3Kernel(self.lengthscale, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'PP3Kernel(lengthscale=%f, output_variance=%f)' % (self.lengthscale, self.output_variance)
+        return 'PP3Kernel(lengthscale=%f, output_variance=%f, eff_dimensions=%s)' % (self.lengthscale,
+            self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('P3(ell=%1.1f, sf=%1.1f)' % (self.lengthscale, self.output_variance), self.depth())
+        return colored('P3(ell=%1.1f, sf=%1.1f, dim=%s)' % (self.lengthscale, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
     
     def latex_print(self):
         #return 'SE(\\ell=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.output_variance)    
@@ -1211,17 +1232,17 @@ class PP3Kernel(BaseKernel):
 
 class MaternKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        lengthscale, output_variance = params
-        return MaternKernel(lengthscale, output_variance)
+        lengthscale, output_variance, eff_dimensions = params
+        return MaternKernel(lengthscale, output_variance, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('MT', self.depth())
     
-    def default(self):
-        return MaternKernel(0., 0.)
+    def default(self, eff_dimensions):
+        return MaternKernel(0., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -1244,9 +1265,10 @@ class MaternKernelFamily(BaseKernelFamily):
         return "lengthscale"    
 
 class MaternKernel(BaseKernel):
-    def __init__(self, lengthscale, output_variance):
+    def __init__(self, lengthscale, output_variance, eff_dimensions):
         self.lengthscale = lengthscale
         self.output_variance = output_variance
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return MaternKernelFamily()
@@ -1262,7 +1284,7 @@ class MaternKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.lengthscale, self.output_variance])
+        return np.array([self.lengthscale, self.output_variance, self.eff_dimensions])
         
     def default_params_replaced(self, sd=1, data_shape=None):
         result = self.param_vector()
@@ -1281,13 +1303,15 @@ class MaternKernel(BaseKernel):
         return result
 
     def copy(self):
-        return MaternKernel(self.lengthscale, self.output_variance)
+        return MaternKernel(self.lengthscale, self.output_variance, self.eff_dimensions)
     
     def __repr__(self):
-        return 'MaternKernel(lengthscale=%f, output_variance=%f)' % (self.lengthscale, self.output_variance)
+        return 'MaternKernel(lengthscale=%f, output_variance=%f, eff_dimensions=%s)' % (self.lengthscale,
+            self.output_variance, '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('MT(ell=%1.1f, sf=%1.1f)' % (self.lengthscale, self.output_variance), self.depth())
+        return colored('MT(ell=%1.1f, sf=%1.1f, dim=%s)' % (self.lengthscale, self.output_variance,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
     
     def latex_print(self):
         #return 'SE(\\ell=%1.1f, \\sigma=%1.1f)' % (self.lengthscale, self.output_variance)    
@@ -1313,21 +1337,21 @@ class MaternKernel(BaseKernel):
     
 class ChangeKernelFamily(BaseKernelFamily):
     def from_param_vector(self, params):
-        steepness, location = params
-        return ChangeKernel(steepness, location)
+        steepness, location, eff_dimensions = params
+        return ChangeKernel(steepness, location, eff_dimensions)
     
     def num_params(self):
-        return 2
+        return 3
     
     def pretty_print(self):
         return colored('CH', self.depth())
     
-    def default(self):
+    def default(self, eff_dimensions):
         # A steepness of exactly zero will result in no gradient.
         # We might consider reparameterizing at some point.
         # The parameters aren't in log space.
         #### TODO - Put steepness parameter in log space for consistency since this will scale like a lengthscale
-        return ChangeKernel(1., 0.)
+        return ChangeKernel(1., 0., range(eff_dimensions))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -1350,9 +1374,10 @@ class ChangeKernelFamily(BaseKernelFamily):
         return "steepness, location"    
 
 class ChangeKernel(BaseKernel):
-    def __init__(self, steepness, location):
+    def __init__(self, steepness, location, eff_dimensions):
         self.steepness = steepness
         self.location = location
+        self.eff_dimensions = eff_dimensions
         
     def family(self):
         return ChangeKernelFamily()
@@ -1368,7 +1393,7 @@ class ChangeKernel(BaseKernel):
     
     def param_vector(self):
         # order of args matches GPML
-        return np.array([self.steepness, self.location])
+        return np.array([self.steepness, self.location, self.eff_dimensions])
     
     #### TODO - Uncomment me when this kernel is implemented
     #### N.B. This assumes the steepness parameter is on a log scale and scales like a lengthscale    
@@ -1383,13 +1408,15 @@ class ChangeKernel(BaseKernel):
         return result
 
     def copy(self):
-        return ChangeKernel(self.steepness, self.location)
+        return ChangeKernel(self.steepness, self.location, self.eff_dimensions)
     
     def __repr__(self):
-        return 'ChangeKernel(steepness=%f, location=%f)' % (self.steepness, self.location)
+        return 'ChangeKernel(steepness=%f, location=%f, eff_dimensions=%s)' % (self.steepness, self.location,
+            '['+','.join([str(x) for x in self.eff_dimensions])+']')
     
     def pretty_print(self):
-        return colored('CH(steep=%1.1f, loc=%1.1f)' % (self.steepness, self.location), self.depth())
+        return colored('CH(steep=%1.1f, loc=%1.1f, dim=%s)' % (self.steepness, self.location,
+            ','.join([str(x) for x in self.eff_dimensions])), self.depth())
     
     def latex_print(self):
         return 'Change'
@@ -1426,7 +1453,7 @@ class MaskKernelFamily(KernelFamily):
             colored(')', self.depth())
     
     def default(self):
-        return MaskKernel(self.ndim, self.active_dimension, self.base_kernel_family.default())
+        return MaskKernel(self.ndim, self.active_dimension, self.base_kernel_family.default(self.ndim))
     
     def __cmp__(self, other):
         assert isinstance(other, KernelFamily)
@@ -1700,7 +1727,7 @@ def base_kernels(ndim=1, base_kernel_names='SE'):
     '''
     for dim in range(ndim):
         for fam in base_kernel_families(base_kernel_names):
-            yield MaskKernel(ndim, dim, fam.default())
+            yield MaskKernel(ndim, dim, fam.default(ndim))
     #if ndim == 1:
     #    for k in base_kernel_families(ndim):
     #        yield MaskKernel(ndim, 0, k)
@@ -1889,7 +1916,7 @@ class ScoredKernel:
     def latex_print(self):
         return self.k_opt.latex_print()
 
-    @staticmethod	
+    @staticmethod   
     def from_matlab_output(output, kernel_family, ndata):
         '''Computes Laplace marginal lik approx and BIC - returns scored Kernel'''
         #laplace_nle, problems = psd_matrices.laplace_approx_stable(output.nll, output.kernel_hypers, output.hessian)
@@ -1897,13 +1924,13 @@ class ScoredKernel:
         laplace_nle = np.nan
         k_opt = kernel_family.from_param_vector(output.kernel_hypers)
         BIC = 2 * output.nll + k_opt.effective_params() * np.log(ndata)
-        return ScoredKernel(k_opt, output.nll, laplace_nle, BIC, output.noise_hyp)	
+        return ScoredKernel(k_opt, output.nll, laplace_nle, BIC, output.noise_hyp)  
 
 def replace_defaults(param_vector, sd):
     #### FIXME - remove dependence on special value of zero
     ####       - Caution - remember print, compare etc when making the change (e.g. just replacing 0 with None would cause problems later)
     '''Replaces zeros in a list with Gaussians'''
-    return [np.random.normal(scale=sd) if p ==0 else p for p in param_vector]
+    return [np.random.normal(scale=sd) if p == 0 else p for p in param_vector]
 
 def add_random_restarts_single_kernel(kernel, n_rand, sd, data_shape):
     '''Returns a list of kernels with random restarts for default values'''

@@ -2,7 +2,7 @@ import collections
 import itertools
 import numpy as np
 nax = np.newaxis
-import Image
+from PIL import Image
 import mkl_hack
 import scipy.linalg
 import scipy.stats

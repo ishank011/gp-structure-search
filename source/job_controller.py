@@ -70,7 +70,7 @@ def covariance_distance(kernels, X, local_computation=True, verbose=True):
     code = re.sub('% ', '%% ', code) # HACK - cblparallel not fond of % signs at the moment
     # Run code - either locally or on cluster - returning location of output file
     if local_computation:
-        output_file = cblparallel.run_batch_locally([code], language='matlab', max_cpu=1.1, max_mem=1.1, job_check_sleep=30, verbose=verbose, single_thread=False)[0] 
+        output_file = cblparallel.run_batch_locally([code], language='matlab', max_cpu=1.1, max_mem=1.1, job_check_sleep=30, verbose=verbose, single_thread=False)[0]
     else:
         output_file = cblparallel.run_batch_on_fear([code], language='matlab', max_jobs=500, verbose=verbose)[0]
     # Read in results from experiment
@@ -121,14 +121,18 @@ def evaluate_kernels(kernels, X, y, verbose=True, noise=None, iters=300, local_c
         print 'Creating scripts'
     scripts = [None] * len(kernels)
     for (i, kernel) in enumerate(kernels):
+        x = kernel.param_vector()
         parameters = {'datafile': data_file.split('/')[-1],
                       'writefile': '%(output_file)s', # N.B. cblparallel manages output files
                       'gpml_path': cblparallel.gpml_path(local_computation),
                       'kernel_family': kernel.gpml_kernel_expression(),
-                      'kernel_params': '[ %s ]' % ' '.join(str(p) for p in kernel.param_vector()),
+                      'kernel_params': '[ %s ]' % ' '.join(str(p) for p in x if type(p) != list),
+                      'eff_dimensions': '[ %s ]' % ';'.join(str(p) for p in x if type(p) == list),
+                      'dim_positions': '[ %s ]' % ' '.join(str(i) for i in range(len(x)) if type(x[i]) == list),
                       'noise': str(noise),
                       'iters': str(iters),
                       'seed': str(random_seed)}
+        print parameters['kernel_params'], parameters['eff_dimensions'], parameters['dim_positions']
         if zero_mean:
             scripts[i] = gpml.OPTIMIZE_KERNEL_CODE_ZERO_MEAN % parameters
         else:
@@ -141,7 +145,7 @@ def evaluate_kernels(kernels, X, y, verbose=True, noise=None, iters=300, local_c
     if verbose:
         print 'Sending scripts to cblparallel'
     if local_computation:
-        output_files = cblparallel.run_batch_locally(scripts, language='matlab', max_cpu=1.1, job_check_sleep=5, submit_sleep=0.1, max_running_jobs=10, verbose=verbose)  
+        output_files = cblparallel.run_batch_locally(scripts, language='matlab', max_cpu=1.1, job_check_sleep=5, submit_sleep=0.1, max_running_jobs=10, verbose=verbose)
     else:
         output_files = cblparallel.run_batch_on_fear(scripts, language='matlab', max_jobs=max_jobs, verbose=verbose, zip_files=zip_files)  
     
@@ -149,7 +153,7 @@ def evaluate_kernels(kernels, X, y, verbose=True, noise=None, iters=300, local_c
     results = [None] * len(kernels)
     for (i, output_file) in enumerate(output_files):
         if verbose:
-            print 'Reading output file %d of %d' % (i + 1, len(kernels))
+            print 'Reading output file %d of %d: %s' % (i + 1, len(kernels), output_file)
         results[i] = ScoredKernel.from_matlab_output(gpml.read_outputs(output_file), kernels[i].family(), ndata)
     
     # Tidy up local output files
